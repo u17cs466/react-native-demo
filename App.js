@@ -1,123 +1,72 @@
-import { StatusBar } from 'expo-status-bar'; // Expo status bar component
-import React, { useState, useEffect } from 'react'; // React and hooks
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, // create stylesheet
-  Text, // display text
-  View, // basic view container
-  ScrollView, // scrollable container
-  TextInput, // input field
-  Button, // platform button
-  TouchableOpacity, // touchable wrapper
-  KeyboardAvoidingView, // moves content above keyboard
-  Platform, // platform detection helper
-  Alert, // native alert dialogs
-} from 'react-native'; // react-native export
-import AsyncStorage from '@react-native-async-storage/async-storage'; // persistent key-value storage
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TextInput,
+  Button,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import store from './src/store/store';
+import { setBlogs, addBlog as addBlogAction, deleteBlog as deleteBlogAction, toggleExpand as toggleExpandAction } from './src/store/blogsSlice';
 
-export default function App() { // main app component
-  const [title, setTitle] = useState(''); // blog title state
-  const [content, setContent] = useState(''); // blog content state
-  const [blogs, setBlogs] = useState([]); // array of blog objects
-  const [isLoading, setIsLoading] = useState(true); // loading indicator for storage
+function AppInner() {
+  const dispatch = useDispatch();
+  const blogs = useSelector(state => state.blogs.items);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
 
   function addBlog() {
-    if (!title.trim() || !content.trim()) { // validate inputs
-      Alert.alert('Validation', 'Please enter both a title and content for the blog.'); // show alert
-      return; // stop if invalid
-    }
-
-    const newBlog = { // create new blog object
-      id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(), // unique id
-      title: title.trim(), // trimmed title
-      content: content.trim(), // trimmed content
-      expanded: false, // collapsed by default
-    };
-    setBlogs(prev => [newBlog, ...prev]); // prepend to blogs
-    setTitle(''); // clear title input
-    setContent(''); // clear content input
-  }
-
-  // Load saved blogs from AsyncStorage on mount
-  useEffect(() => { // load persisted blogs once on mount
-    let mounted = true; // track mounted state
-    async function load() { // async loader
-      try {
-        const raw = await AsyncStorage.getItem('@blogs'); // read from storage
-        if (raw) {
-          const parsed = JSON.parse(raw); // parse saved JSON
-          if (mounted && Array.isArray(parsed)) setBlogs(parsed); // restore if valid
-        }
-      } catch (e) {
-        console.warn('Failed to load blogs from storage', e); // log load errors
-      } finally {
-        if (mounted) setIsLoading(false); // clear loading flag
-      }
-    }
-    load(); // invoke loader
-    return () => {
-      mounted = false; // cleanup on unmount
-    };
-  }, []); // empty deps => run once
-
-  // Persist blogs whenever they change (skip initial load)
-  useEffect(() => { // persist blogs when they change (after initial load)
-    if (isLoading) return; // skip while loading initial data
-    async function save() { // async saver
-      try {
-        await AsyncStorage.setItem('@blogs', JSON.stringify(blogs)); // write JSON to storage
-      } catch (e) {
-        console.warn('Failed to save blogs to storage', e); // log save errors
-      }
-    }
-    save(); // invoke save
-  }, [blogs, isLoading]); // run when blogs or loading state changes
-
-  function toggleExpand(id) {
-    setBlogs(prev => prev.map(b => (b.id === id ? { ...b, expanded: !b.expanded } : b))); // toggle expanded flag
-  }
-
-  function deleteBlog(id) {
-    // On web, Alert.alert does not support button callbacks reliably, use window.confirm
-    if (Platform.OS === 'web') {
-      const ok = typeof confirm === 'function' ? confirm('Are you sure you want to delete this blog?') : true;
-      if (ok) setBlogs(prev => prev.filter(b => b.id !== id));
+    if (!title.trim() || !content.trim()) {
+      Alert.alert('Validation', 'Please enter both a title and content for the blog.');
       return;
     }
+    const newBlog = {
+      id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(),
+      title: title.trim(),
+      content: content.trim(),
+      expanded: false,
+    };
+    dispatch(addBlogAction(newBlog));
+    setTitle('');
+    setContent('');
+  }
 
-    // On native platforms, use a native alert with buttons
+  function onToggle(id) {
+    dispatch(toggleExpandAction(id));
+  }
+
+  function onDelete(id) {
+    if (Platform.OS === 'web') {
+      const ok = typeof confirm === 'function' ? confirm('Are you sure you want to delete this blog?') : true;
+      if (ok) dispatch(deleteBlogAction(id));
+      return;
+    }
     Alert.alert('Delete blog', 'Are you sure you want to delete this blog?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => setBlogs(prev => prev.filter(b => b.id !== id)) },
+      { text: 'Delete', style: 'destructive', onPress: () => dispatch(deleteBlogAction(id)) },
     ]);
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container} // main container style
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined} // keyboard behavior per platform
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar style="auto" />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.header}>Blog Writer</Text>
 
         <View style={styles.form}>
           <Text style={styles.label}>Title</Text>
-          <TextInput
-            value={title} // bind title value
-            onChangeText={setTitle} // update title on change
-            placeholder="Enter blog title" // placeholder text
-            style={styles.input} // input styling
-          />
+          <TextInput value={title} onChangeText={setTitle} placeholder="Enter blog title" style={styles.input} />
 
           <Text style={styles.label}>Content</Text>
-          <TextInput
-            value={content} // bind content value
-            onChangeText={setContent} // update content on change
-            placeholder="Write your blog content here" // placeholder text
-            style={[styles.input, styles.textArea]} // text area styling
-            multiline // allow multiple lines
-            numberOfLines={6} // suggested lines
-          />
+          <TextInput value={content} onChangeText={setContent} placeholder="Write your blog content here" style={[styles.input, styles.textArea]} multiline numberOfLines={6} />
 
           <View style={styles.buttonRow}>
             <Button title="Add Blog" onPress={addBlog} />
@@ -134,14 +83,12 @@ export default function App() { // main app component
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTitle}>{blog.title}</Text>
                 </View>
-                <Text style={styles.cardContent}>
-                  {blog.expanded ? blog.content : blog.content.slice(0, 140) + (blog.content.length > 140 ? '…' : '')}
-                </Text>
+                <Text style={styles.cardContent}>{blog.expanded ? blog.content : blog.content.slice(0, 140) + (blog.content.length > 140 ? '…' : '')}</Text>
                 <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => toggleExpand(blog.id)} style={styles.actionButton}>
+                  <TouchableOpacity onPress={() => onToggle(blog.id)} style={styles.actionButton}>
                     <Text style={styles.actionText}>{blog.expanded ? 'Hide' : 'View'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteBlog(blog.id)} style={[styles.actionButton, styles.deleteButton]}>
+                  <TouchableOpacity onPress={() => onDelete(blog.id)} style={[styles.actionButton, styles.deleteButton]}>
                     <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
@@ -151,6 +98,46 @@ export default function App() { // main app component
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+export default function App() {
+  // Load persisted blogs once into store and subscribe to persist changes
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const raw = await AsyncStorage.getItem('@blogs');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (mounted && Array.isArray(parsed)) store.dispatch(setBlogs(parsed));
+        }
+      } catch (e) {
+        console.warn('Failed to load blogs from storage', e);
+      }
+    }
+    load();
+
+    // subscribe and persist on change
+    const unsubscribe = store.subscribe(() => {
+      const state = store.getState();
+      try {
+        AsyncStorage.setItem('@blogs', JSON.stringify(state.blogs.items));
+      } catch (e) {
+        console.warn('Failed to save blogs', e);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  return (
+    <Provider store={store}>
+      <AppInner />
+    </Provider>
   );
 }
 
